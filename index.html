@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html>
-  <head>
+<html lang="en">
+
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sensor Data</title>
@@ -9,13 +10,13 @@
         body {
             font-family: Arial, sans-serif;
             background-color: rgb(0, 0, 0);
+            color: white;
         }
 
         #chartContainer {
-            width: 90vw; /* Adjust based on needs */
+            width: 90vw;
             height: 90vh;
-            /*max-width: 1000px;  Prevent excessive growth */
-            margin: auto; /* Center it */
+            margin: auto;
         }
 
         canvas {
@@ -24,14 +25,141 @@
             margin: auto;
             background-color: rgb(0, 0, 0);
         }
+
+        #error {
+            text-align: center;
+            padding: 1rem;
+            color: red;
+            font-weight: bold;
+        }
     </style>
 </head>
 
 <body>
-  <h1>HEJ!</h1>
+    <div id="error"></div>
     <div id="chartContainer">
         <canvas id="sensorChart" width="100%" height="100%"></canvas>
     </div>
+
+    <script>
+        function getApiKeyFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('api_key');
+        }
+
+        const apiKey = getApiKeyFromUrl();
+
+        if (!apiKey) {
+            const errorMsg = '❌ API-nøgle mangler i URL\'en. Tilføj ?api_key=DIN_NØGLE';
+            document.getElementById('error').textContent = errorMsg;
+            console.error(errorMsg);
+            throw new Error('API-nøgle mangler');
+        }
+
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        const labels = [];
+        const temperatureData = [];
+        const humidityData = [];
+        const coLevelsData = [];
+
+        const sensorChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        borderColor: 'red',
+                        backgroundColor: 'red',
+                        data: temperatureData,
+                        fill: false
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        borderColor: 'blue',
+                        backgroundColor: 'blue',
+                        data: humidityData,
+                        fill: false
+                    },
+                    {
+                        label: 'CO Levels (ppm)',
+                        borderColor: 'green',
+                        backgroundColor: 'green',
+                        data: coLevelsData,
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'category',
+                        title: {
+                            display: true,
+                            text: 'Time (seconds)',
+                            color: 'white'
+                        },
+                        ticks: {
+                            color: 'white'
+                        },
+                        grid: {
+                            color: 'white'
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Values',
+                            color: 'white'
+                        },
+                        ticks: {
+                            color: 'white'
+                        },
+                        grid: {
+                            color: 'white'
+                        }
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: 'white'
+                        }
+                    }
+                }
+            }
+        });
+
+        function fetchData() {
+            fetch(`https://api.thingspeak.com/channels/2853926/feeds.json?api_key=${apiKey}&results=60`)
+                .then(response => response.json())
+                .then(data => {
+                    labels.length = 0;
+                    temperatureData.length = 0;
+                    humidityData.length = 0;
+                    coLevelsData.length = 0;
+
+                    data.feeds.forEach(element => {
+                        labels.push(element.created_at);
+                        temperatureData.push(Number(element.field1));
+                        humidityData.push(Number(element.field2));
+                        coLevelsData.push(Number(element.field3));
+                    });
+
+                    sensorChart.update();
+                })
+                .catch(error => {
+                    console.error('Fejl ved hentning af data:', error);
+                    document.getElementById('error').textContent = '❌ Kunne ikke hente data fra ThingSpeak.';
+                });
+        }
+
+        setInterval(fetchData, 60000); // Hver 60 sek.
+        fetchData(); // Start straks
+    </script>
 </body>
 
 </html>
