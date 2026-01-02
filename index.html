@@ -6,24 +6,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sensor Data</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: rgb(0, 0, 0);
+            background-color: black;
             color: white;
         }
 
         #chartContainer {
             width: 90vw;
-            height: 90vh;
+            height: 80vh;
             margin: auto;
         }
 
         canvas {
             width: 100% !important;
             height: 100% !important;
-            margin: auto;
-            background-color: rgb(0, 0, 0);
+            background-color: black;
+        }
+
+        #info {
+            text-align: center;
+            margin: 10px;
+            font-size: 1.2rem;
         }
 
         #error {
@@ -36,9 +42,14 @@
 </head>
 
 <body>
+
     <div id="error"></div>
+    <div id="info">
+        🌬️ 1-Hour Average Air Quality: <span id="avgAir">--</span>
+    </div>
+
     <div id="chartContainer">
-        <canvas id="sensorChart" width="100%" height="100%"></canvas>
+        <canvas id="sensorChart"></canvas>
     </div>
 
     <script>
@@ -50,17 +61,18 @@
         const apiKey = getApiKeyFromUrl();
 
         if (!apiKey) {
-            const errorMsg = '❌ API-nøgle mangler i URL\'en. Tilføj ?api_key=DIN_NØGLE';
+            const errorMsg = '❌ API key missing. Add ?api_key=YOUR_KEY';
             document.getElementById('error').textContent = errorMsg;
-            console.error(errorMsg);
-            throw new Error('API-nøgle mangler');
+            throw new Error(errorMsg);
         }
 
         const ctx = document.getElementById('sensorChart').getContext('2d');
+
         const labels = [];
         const temperatureData = [];
         const humidityData = [];
-        const coLevelsData = [];
+        const airQualityData = [];
+        const airQualityAvgData = [];
 
         const sensorChart = new Chart(ctx, {
             type: 'line',
@@ -82,52 +94,38 @@
                         fill: false
                     },
                     {
-                        label: 'CO Levels (ppm)',
+                        label: 'Air Quality Index',
                         borderColor: 'green',
                         backgroundColor: 'green',
-                        data: coLevelsData,
+                        data: airQualityData,
+                        fill: false
+                    },
+                    {
+                        label: 'Air Quality (1h Avg)',
+                        borderColor: 'yellow',
+                        backgroundColor: 'yellow',
+                        borderDash: [5, 5],
+                        data: airQualityAvgData,
                         fill: false
                     }
                 ]
             },
             options: {
-                scales: {
-                    x: {
-                        type: 'category',
-                        title: {
-                            display: true,
-                            text: 'Time (seconds)',
-                            color: 'white'
-                        },
-                        ticks: {
-                            color: 'white'
-                        },
-                        grid: {
-                            color: 'white'
-                        }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Values',
-                            color: 'white'
-                        },
-                        ticks: {
-                            color: 'white'
-                        },
-                        grid: {
-                            color: 'white'
-                        }
-                    }
-                },
                 responsive: true,
                 maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        ticks: { color: 'white' },
+                        grid: { color: 'white' }
+                    },
+                    y: {
+                        ticks: { color: 'white' },
+                        grid: { color: 'white' }
+                    }
+                },
                 plugins: {
                     legend: {
-                        labels: {
-                            color: 'white'
-                        }
+                        labels: { color: 'white' }
                     }
                 }
             }
@@ -137,29 +135,51 @@
             fetch(`https://api.thingspeak.com/channels/2853926/feeds.json?api_key=${apiKey}&results=60`)
                 .then(response => response.json())
                 .then(data => {
+
                     labels.length = 0;
                     temperatureData.length = 0;
                     humidityData.length = 0;
-                    coLevelsData.length = 0;
+                    airQualityData.length = 0;
+                    airQualityAvgData.length = 0;
 
-                    data.feeds.forEach(element => {
-                        labels.push(element.created_at);
-                        temperatureData.push(Number(element.field1));
-                        humidityData.push(Number(element.field2));
-                        coLevelsData.push(Number(element.field3));
+                    let sumAir = 0;
+                    let count = 0;
+
+                    data.feeds.forEach(entry => {
+                        labels.push(new Date(entry.created_at).toLocaleTimeString());
+
+                        temperatureData.push(Number(entry.field1));
+                        humidityData.push(Number(entry.field2));
+
+                        const aq = Number(entry.field3);
+                        airQualityData.push(aq);
+
+                        if (!isNaN(aq)) {
+                            sumAir += aq;
+                            count++;
+                        }
                     });
+
+                    const avgAir = count > 0 ? (sumAir / count).toFixed(1) : '--';
+                    document.getElementById('avgAir').textContent = avgAir;
+
+                    // Draw flat average line
+                    for (let i = 0; i < airQualityData.length; i++) {
+                        airQualityAvgData.push(avgAir);
+                    }
 
                     sensorChart.update();
                 })
                 .catch(error => {
-                    console.error('Fejl ved hentning af data:', error);
-                    document.getElementById('error').textContent = '❌ Kunne ikke hente data fra ThingSpeak.';
+                    console.error(error);
+                    document.getElementById('error').textContent =
+                        '❌ Failed to fetch data from ThingSpeak';
                 });
         }
 
-        setInterval(fetchData, 60000); // Hver 60 sek.
-        fetchData(); // Start straks
+        fetchData();
+        setInterval(fetchData, 60000); // every 60 seconds
     </script>
-</body>
 
+</body>
 </html>
